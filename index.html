@@ -131,8 +131,9 @@ function send(){
   }).then(function(j){
     var msg=(j.choices&&j.choices[0]&&j.choices[0].message)||{};
     var text=msg.content||msg.reasoning_content||'';
+    if(!(text||'').trim()) text='【未解析到内容】原始返回：\n'+JSON.stringify(j).slice(0,500);
     as.b.className=as.b.className.replace(' loading','');
-    as.b.innerHTML=md(text||'(无内容)');
+    as.b.innerHTML=md(text);
     messages.push({role:'assistant',content:text});
     loading=false; sendBtn.disabled=false; refreshEmpty(); chat.scrollTop=chat.scrollHeight;
   }).catch(function(e){
