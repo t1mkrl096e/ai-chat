@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 对话 · DeepSeek</title>
+<style>
+  :root{ --bg:#f5f5f7; --card:#ffffff; --ink:#1d1d1f; --ink2:#6e6e73; --ink3:#86868b; --accent:#426EFE; --line:rgba(0,0,0,.08); }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ height:100%; }
+  body{ font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif; background:var(--bg); color:var(--ink); -webkit-font-smoothing:antialiased; display:flex; flex-direction:column; }
+  .num{ font-variant-numeric:tabular-nums; }
+
+  .topbar{ background:rgba(255,255,255,.9); backdrop-filter:blur(20px) saturate(180%); border-bottom:1px solid var(--line); padding:12px 20px; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+  .brand{ font-size:17px; font-weight:700; letter-spacing:-.02em; }
+  .brand small{ font-size:12px; color:var(--ink3); font-weight:400; margin-left:8px; }
+  .keybox{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .keybox input, .keybox select{ padding:8px 11px; border:1px solid var(--line); border-radius:9px; font-size:13px; font-family:inherit; outline:none; background:#fff; }
+  .keybox input{ width:190px; }
+  .keybox button{ padding:8px 14px; border:none; border-radius:9px; background:var(--accent); color:#fff; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
+  .keybox .st{ font-size:11px; color:var(--ink3); }
+
+  .chat{ flex:1; overflow-y:auto; padding:24px 20px; display:flex; flex-direction:column; gap:14px; max-width:820px; width:100%; margin:0 auto; }
+  .msg{ display:flex; gap:10px; max-width:100%; }
+  .msg.user{ justify-content:flex-end; }
+  .msg .bubble{ max-width:78%; padding:12px 15px; border-radius:16px; font-size:14px; line-height:1.65; word-break:break-word; white-space:pre-wrap; }
+  .msg.user .bubble{ background:var(--accent); color:#fff; border-bottom-right-radius:5px; }
+  .msg.assistant .bubble{ background:var(--card); color:var(--ink); border-bottom-left-radius:5px; border:1px solid var(--line); }
+  .msg .bubble.loading{ opacity:.7; }
+  .msg .bubble pre{ background:#f5f5f7; border-radius:9px; padding:11px 13px; margin:9px 0 0; overflow-x:auto; white-space:pre; font-size:13px; font-family:'SF Mono',Consolas,'Courier New',monospace; }
+  .msg .bubble code:not(pre code){ background:#eef0f3; border-radius:5px; padding:1.5px 5px; font-size:13px; font-family:'SF Mono',Consolas,monospace; }
+  .msg .bubble h1,.msg .bubble h2,.msg .bubble h3{ margin:10px 0 5px; font-size:15px; }
+  .msg .bubble ul{ padding-left:20px; margin:6px 0; }
+  .msg .bubble li{ margin:2px 0; }
+  .copybtn{ font-size:11px; color:var(--ink3); margin-top:6px; cursor:pointer; user-select:none; }
+
+  .inputbar{ border-top:1px solid var(--line); background:#fff; padding:14px 20px; display:flex; gap:10px; max-width:820px; width:100%; margin:0 auto; align-items:flex-end; }
+  .inputbar textarea{ flex:1; resize:none; border:1px solid var(--line); border-radius:12px; padding:11px 14px; font-size:14px; font-family:inherit; outline:none; line-height:1.5; background:var(--card); max-height:140px; }
+  .inputbar textarea:focus{ border-color:var(--accent); box-shadow:0 0 0 3px rgba(66,110,254,.12); }
+  .inputbar button{ padding:11px 22px; border:none; border-radius:12px; background:var(--accent); color:#fff; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; flex-shrink:0; }
+  .inputbar button:disabled{ opacity:.5; cursor:default; }
+
+  .empty{ text-align:center; color:var(--ink3); margin:auto; font-size:14px; }
+  .empty .big{ font-size:32px; font-weight:700; color:var(--ink); margin-bottom:8px; letter-spacing:-.03em; }
+  .empty .tip{ line-height:1.7; }
+
+  @media (max-width:640px){ .keybox input{width:130px;} .brand small{display:none;} }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">AI 对话<small>DeepSeek · 浏览器直连</small></div>
+    <div class="keybox">
+      <input type="password" id="apikey" placeholder="粘贴你的 DeepSeek API Key (sk-…)" autocomplete="off">
+      <input id="model" list="models" value="deepseek-v4-flash-vision-exp" title="模型名（可直接改）" style="width:170px;">
+      <datalist id="models">
+        <option value="deepseek-v4-flash-vision-exp">
+        <option value="deepseek-chat">
+        <option value="deepseek-reasoner">
+        <option value="deepseek-v3">
+      </datalist>
+      <button id="saveKey">保存</button>
+      <span class="st" id="keystatus"></span>
+    </div>
+  </div>
+
+  <div class="chat" id="chat"></div>
+
+  <div class="inputbar">
+    <textarea id="inp" placeholder="输入问题…（Enter 发送 / Shift+Enter 换行）" rows="1"></textarea>
+    <button id="send">发送</button>
+  </div>
+
+<script>
+(function(){
+'use strict';
+if(location.protocol==='file:'){ alert('请用 http:// 或 https:// 打开本页（不要直接双击文件）。\n\n例：http://localhost:3456/ai-chat.html\n或把本文件放到任意静态网站(Blog/GitHub Pages)后访问。\n（直接双击 file:// 会被浏览器拦截跨域请求）'); }
+var BASE='https://api.deepseek.com/chat/completions';
+var savedKey=get('dsk'), savedModel=get('dsm');
+var messages=[], loading=false;
+var chat=document.getElementById('chat'), inp=document.getElementById('inp'), sendBtn=document.getElementById('send');
+var keyEl=document.getElementById('apikey'), modelEl=document.getElementById('model'), st=document.getElementById('keystatus');
+function get(k){ try{ return localStorage.getItem(k)||''; }catch(e){ return ''; } }
+function set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+if(savedKey) keyEl.value=savedKey;
+if(savedModel) modelEl.value=savedModel;
+function keyStatus(){ st.textContent = keyEl.value ? '✓ key 已配置' : '未填 key'; }
+keyStatus();
+document.getElementById('saveKey').onclick=function(){ set('dsk',keyEl.value.trim()); set('dsm',modelEl.value); keyStatus(); if(!keyEl.value) alert('请先粘贴你的 DeepSeek API Key'); };
+
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function md(s){
+  s=esc(s);
+  s=s.replace(/```(\w*)\n([\s\S]*?)```/g,function(m,l,c){return '<pre><code>'+esc(c)+'</code></pre>';});
+  s=s.replace(/`([^`]+)`/g,'<code>$1</code>');
+  s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+  s=s.replace(/^###\s*(.+)$/gm,'<h3>$1</h3>');
+  s=s.replace(/^##\s*(.+)$/gm,'<h3>$1</h3>');
+  s=s.replace(/^#\s*(.+)$/gm,'<h3>$1</h3>');
+  s=s.replace(/^- (.*)$/gm,'<li>$1</li>').replace(/<li>(.*)<\/li>/g,function(m){return '<ul>'+m+'</ul>';});
+  s=s.replace(/^(\d+)\.\s*(.+)$/gm,'<li>$2</li>');
+  s=s.replace(/\n/g,'<br>');
+  return s;
+}
+function addMsg(role,text){
+  var d=document.createElement('div'); d.className='msg '+role;
+  var b=document.createElement('div'); b.className='bubble';
+  if(role==='user') b.textContent=text; else b.innerHTML=md(text);
+  d.appendChild(b);
+  if(role==='assistant'){ var c=document.createElement('div'); c.className='copybtn'; c.textContent='复制'; c.onclick=function(){ if(navigator.clipboard)navigator.clipboard.writeText(text); }; d.appendChild(c); }
+  chat.appendChild(d); chat.scrollTop=chat.scrollHeight; return {d:d,b:b};
+}
+function emptyState(){
+  chat.innerHTML='<div class="empty"><div class="big">AI 对话</div><div class="tip">在上方粘贴你的 DeepSeek API Key 并保存。<br>然后输入问题开始对话。Key 只存在你本机浏览器，不上传。</div></div>';
+}
+function refreshEmpty(){ if(chat.children.length===0||chat.querySelector('.empty')) emptyState(); }
+emptyState();
+
+function send(){
+  var q=inp.value.trim(); if(!q||loading) return;
+  var key=keyEl.value.trim(); if(!key){ alert('请先粘贴 DeepSeek API Key'); return; }
+  inp.value=''; inp.style.height='auto';
+  addMsg('user',q);
+  messages.push({role:'user',content:q});
+  var as=addMsg('assistant',''); as.b.className+=' loading';
+  loading=true; sendBtn.disabled=true;
+  var body=JSON.stringify({model:modelEl.value, messages:[{role:'system',content:'你是一位知识渊博、可靠的中文 AI 助手。回答用中文，直接、准确、条理清晰，必要时用 Markdown 排版。'}].concat(messages), stream:false});
+  fetch(BASE,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:body}).then(function(r){
+    if(!r.ok) return r.text().then(function(t){ throw new Error('HTTP '+r.status+' - '+t.slice(0,300)); });
+    return r.json();
+  }).then(function(j){
+    var msg=(j.choices&&j.choices[0]&&j.choices[0].message)||{};
+    var text=msg.content||msg.reasoning_content||'';
+    as.b.className=as.b.className.replace(' loading','');
+    as.b.innerHTML=md(text||'(无内容)');
+    messages.push({role:'assistant',content:text});
+    loading=false; sendBtn.disabled=false; refreshEmpty(); chat.scrollTop=chat.scrollHeight;
+  }).catch(function(e){
+    as.b.className=as.b.className.replace(' loading','');
+    as.b.innerHTML=md('请求失败：'+e.message);
+    loading=false; sendBtn.disabled=false;
+  });
+}
+sendBtn.onclick=send;
+inp.addEventListener('keydown',function(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); send(); } });
+inp.addEventListener('input',function(){ inp.style.height='auto'; inp.style.height=Math.min(140,inp.scrollHeight)+'px'; });
+})();
+</script>
+</body>
+</html>
